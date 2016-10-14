@@ -1,0 +1,8 @@
+[package]
+
+name = "matrix"
+version = "0.0.1"
+authors = ["Tristan Konolige <tristan@konolige.com>"]
+
+[dependencies]
+ndarray = "0.6"
