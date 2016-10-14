@@ -1,9 +1,11 @@
 use std::ops::*;
-use std::num::*;
 use std::marker::PhantomData;
 
 extern crate ndarray;
 use ndarray::*;
+
+extern crate num_traits;
+use num_traits::*;
 
 #[derive(Debug, PartialEq, Clone)]
 struct RowMajor;
@@ -12,14 +14,21 @@ struct ColMajor;
 
 trait Storage {
     type Output;
+    fn reorder_ix(ixs: (Ix, Ix)) -> (Ix, Ix);
 }
 
 impl Storage for RowMajor {
     type Output = RowMajor;
+    fn reorder_ix(ixs: (Ix, Ix)) -> (Ix, Ix) {
+        ixs
+    }
 }
 
 impl Storage for ColMajor {
     type Output = ColMajor;
+    fn reorder_ix(ixs: (Ix, Ix)) -> (Ix, Ix) {
+        (ixs.1, ixs.0)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -41,22 +50,6 @@ impl<'a, T, Order: Storage> CompressedSparseMatrix<T, Order> {
     }
 }
 
-trait CompressedMat<Order: Storage> {
-    fn reorder_ix((Ix, Ix)) -> (Ix, Ix);
-}
-
-impl<T> CompressedMat<ColMajor> for CompressedSparseMatrix<T, ColMajor> {
-    fn reorder_ix(ixs: (Ix, Ix)) -> (Ix, Ix) {
-        (ixs.1, ixs.0)
-    }
-}
-
-impl<T> CompressedMat<ColMajor> for CompressedSparseMatrix<T, RowMajor> {
-    fn reorder_ix(ixs: (Ix, Ix)) -> (Ix, Ix) {
-        ixs
-    }
-}
-
 // iterator over all matrix entries in efficient matter
 struct NNZIterator<'a, T: 'a, Order: 'a + Storage> {
     mat: &'a CompressedSparseMatrix<T, Order>,
@@ -68,7 +61,7 @@ impl<'a, T, Order: Storage> Iterator for NNZIterator<'a, T, Order> {
     type Item = (Ix, Ix, T);
 
     fn next(&mut self) -> Option<(Ix, Ix, T)> {
-        if self.outer_idx == CompressedSparseMatrix::<T, Order>::reorder_ix(self.mat.shape).0 {
+        if self.outer_idx == Order::reorder_ix(self.mat.shape).0 {
             return None;
         }
 
@@ -82,7 +75,7 @@ impl<'a, T, Order: Storage> Iterator for NNZIterator<'a, T, Order> {
             self.inner_idx += 1;
         }
 
-        let (i, j) = CompressedSparseMatrix::reorder_ix((o, i));
+        let (i, j) = Order::reorder_ix((o, i));
         Some((i, j, v))
     }
 }
@@ -115,17 +108,21 @@ pub fn multAspV<T, AF, MF, Order: Storage>(A: CompressedSparseMatrix<T, Order>,
 {
 }
 
-pub fn multAv<T: ndarray::Data, AF, MF, Order: Storage>(A: CompressedSparseMatrix<T, Order>,
-                                                        x: ArrayBase<T, Order>,
-                                                        add: AF,
-                                                        mult: MF)
-                                                        -> Array<T, Order>
+pub fn multAv<T, AF, MF, Order>(A: CompressedSparseMatrix<T, Order>,
+                                   x: ArrayBase<T, Ix>,
+                                   add: AF,
+                                   mult: MF,
+                                   zero: T)
+                                   -> Array<T, Ix>
     where AF: Fn(T, T) -> T,
-          MF: Fn(T, T) -> T
+          MF: Fn(T, T) -> T,
+          T: ndarray::Data,
+          Order: Storage,
+          T: Clone,
 {
-    let y = Array::zeros(x.shape());
+    let y = Array::<T,Ix>::from_elem(x.shape()[0], zero);
     for (i, j, v) in A.iter() {
-        y[i] = v * x[j]
+        y[i] = add(y[i], mult(v, x[j]));
     }
 
     y
