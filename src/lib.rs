@@ -1,129 +1,13 @@
-use std::ops::*;
-use std::marker::PhantomData;
 
+#[macro_use(s)]
 extern crate ndarray;
-use ndarray::*;
+extern crate itertools;
 
-extern crate num_traits;
-use num_traits::*;
+pub mod mat;
 
-#[derive(Debug, PartialEq, Clone)]
-struct RowMajor;
-#[derive(Debug, PartialEq, Clone)]
-struct ColMajor;
+pub mod level1;
+pub mod level2;
+pub mod level3;
 
-trait Storage {
-    type Output;
-    fn reorder_ix(ixs: (Ix, Ix)) -> (Ix, Ix);
-}
-
-impl Storage for RowMajor {
-    type Output = RowMajor;
-    fn reorder_ix(ixs: (Ix, Ix)) -> (Ix, Ix) {
-        ixs
-    }
-}
-
-impl Storage for ColMajor {
-    type Output = ColMajor;
-    fn reorder_ix(ixs: (Ix, Ix)) -> (Ix, Ix) {
-        (ixs.1, ixs.0)
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct CompressedSparseMatrix<T, Order: Storage> {
-    values: Vec<T>, // TODO: should be able to use views here
-    outside: Vec<Ix>,
-    inside: Vec<Ix>,
-    shape: (Ix, Ix),
-    phantom: PhantomData<Order>,
-}
-
-impl<'a, T, Order: Storage> CompressedSparseMatrix<T, Order> {
-    pub fn iter(&'a self) -> NNZIterator<'a, T, Order> {
-        NNZIterator {
-            mat: &self,
-            outer_idx: 0,
-            inner_idx: 0,
-        }
-    }
-}
-
-// iterator over all matrix entries in efficient matter
-struct NNZIterator<'a, T: 'a, Order: 'a + Storage> {
-    mat: &'a CompressedSparseMatrix<T, Order>,
-    outer_idx: Ix,
-    inner_idx: Ix,
-}
-
-impl<'a, T, Order: Storage> Iterator for NNZIterator<'a, T, Order> {
-    type Item = (Ix, Ix, T);
-
-    fn next(&mut self) -> Option<(Ix, Ix, T)> {
-        if self.outer_idx == Order::reorder_ix(self.mat.shape).0 {
-            return None;
-        }
-
-        let v = self.mat.values[self.inner_idx];
-        let i = self.mat.inside[self.inner_idx];
-        let o = self.outer_idx;
-        if self.inner_idx == self.mat.outside[self.outer_idx] - 1 {
-            self.outer_idx += 1;
-            self.inner_idx = self.mat.outside[self.outer_idx];
-        } else {
-            self.inner_idx += 1;
-        }
-
-        let (i, j) = Order::reorder_ix((o, i));
-        Some((i, j, v))
-    }
-}
-
-// Sparse matrix stored with either compressed columns or rows
-#[derive(Debug, PartialEq, Clone)]
-pub struct CompressedSparseVector<T, Ix> {
-    values: Vec<T>,
-    is: Vec<Ix>,
-    shape: Ix,
-}
-
-pub fn multAA<T, AF, MF, Order: Storage>(A: CompressedSparseMatrix<T, Order>,
-                                         B: CompressedSparseMatrix<T, Order>,
-                                         add: AF,
-                                         mult: MF)
-                                         -> CompressedSparseMatrix<T, Order>
-    where AF: Fn(T, T) -> T,
-          MF: Fn(T, T) -> T
-{
-}
-
-pub fn multAspV<T, AF, MF, Order: Storage>(A: CompressedSparseMatrix<T, Order>,
-                                           B: CompressedSparseVector<T, Order>,
-                                           add: AF,
-                                           mult: MF)
-                                           -> CompressedSparseVector<T, Order>
-    where AF: Fn(T, T) -> T,
-          MF: Fn(T, T) -> T
-{
-}
-
-pub fn multAv<T, AF, MF, Order>(A: CompressedSparseMatrix<T, Order>,
-                                   x: ArrayBase<T, Ix>,
-                                   add: AF,
-                                   mult: MF,
-                                   zero: T)
-                                   -> Array<T, Ix>
-    where AF: Fn(T, T) -> T,
-          MF: Fn(T, T) -> T,
-          T: ndarray::Data,
-          Order: Storage,
-          T: Clone,
-{
-    let y = Array::<T,Ix>::from_elem(x.shape()[0], zero);
-    for (i, j, v) in A.iter() {
-        y[i] = add(y[i], mult(v, x[j]));
-    }
-
-    y
-}
+#[cfg(test)]
+mod test;
