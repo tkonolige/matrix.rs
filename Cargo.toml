@@ -1,8 +1,12 @@
 [package]
-name = "matrix-rs"
+name = "sparse_matrix"
 version = "0.0.1"
 authors = ["Tristan Konolige <tristan@konolige.com>"]
 
 [dependencies]
-ndarray = "0.6"
-itertools = "*"
+ndarray = { path = "/Users/tristan/Build/rust-ndarray" }
+itertools = "0.5.4"
+num-integer = "*"
+num-traits = "*"
+rand = "*"
+bit-vec = "*"
